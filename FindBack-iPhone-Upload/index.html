@@ -1,16 +1,271 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#204e43"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="FindBack"><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icons/apple-touch-icon.png"><meta name="apple-mobile-web-app-status-bar-style" content="default"><title>FindBack · Phone prototype</title><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="mobile.css"></head>
-<body>
-<div class="preview-caption"><strong>findback.</strong><span>PHONE APP PROTOTYPE</span><p>A little lost. Almost home.</p></div>
-<div class="phone-app">
-<header class="app-header"><a class="brand" href="#home" aria-label="FindBack home"><span class="brandmark">f<span>↗</span></span>findback<span class="brand-dot">.</span></a><button class="profile-button" id="about" aria-label="About this demo">?</button></header>
-<main id="app"></main>
-<nav class="bottom-nav" aria-label="Main navigation">
-<a href="#home" data-nav="home"><svg viewBox="0 0 24 24"><path d="m3 10 9-7 9 7v10H3Z M9 20v-7h6v7"/></svg><span>Home</span></a>
-<a href="#search" data-nav="search"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></svg><span>Find item</span></a>
-<a href="#report" data-nav="report"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="4"/><path d="M9 5V3h6v2 M8 13h8 M12 9v8"/></svg><span>Report</span></a>
-<a href="#claims" data-nav="claims"><svg viewBox="0 0 24 24"><path d="M7 4h10v3H7Z M7 5H4v16h16V5h-3 M8 13l3 3 5-6"/></svg><span>My claims <b id="claim-count"></b></span></a>
-</nav>
-</div>
-<dialog id="modal"><button class="close" aria-label="Close dialog">×</button><div id="modal-content"></div></dialog><div id="toast" role="status" aria-live="polite"></div>
-<script type="module" src="app.js"></script><script type="module" src="pwa.js"></script></body></html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+    <meta name="theme-color" content="#204e43">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="FindBack">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>FindBack · Phone prototype</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="mobile.css">
+    <style>
+        /* ===== Start screen (overlay on top of the app) ===== */
+        .start-screen {
+            position: fixed;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: min(430px, 100%);
+            height: 100dvh;
+            z-index: 50;
+            background: var(--paper, #f8f9f5);
+            color: var(--ink, #203c34);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            padding: 0 28px calc(34px + env(safe-area-inset-bottom));
+            transition: opacity .35s ease, visibility .35s;
+        }
+
+        .start-screen.is-hidden {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none
+        }
+
+        .start-screen .blob {
+            position: absolute;
+            border-radius: 50%;
+            pointer-events: none
+        }
+
+        .start-screen .blob.a {
+            width: 340px;
+            height: 340px;
+            background: var(--lime, #d9edb6);
+            opacity: .55;
+            top: -120px;
+            right: -140px
+        }
+
+        .start-screen .blob.b {
+            width: 220px;
+            height: 220px;
+            border: 1.5px solid var(--line, #e1e6dc);
+            bottom: 120px;
+            left: -110px
+        }
+
+        .start-hero {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            position: relative;
+            z-index: 1;
+            animation: start-enter .6s ease both
+        }
+
+        .start-mark {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 96px;
+            height: 102px;
+            border-radius: 32px;
+            background: var(--green, #285c49);
+            color: #fff;
+            font-family: Manrope, sans-serif;
+            font-size: 88px;
+            font-weight: 500;
+            line-height: 1;
+            position: relative;
+            box-shadow: 0 18px 40px -16px rgba(40, 92, 73, .55);
+        }
+
+        .start-mark span {
+            position: absolute;
+            right: 8px;
+            top: -22px;
+            font-size: 72px;
+            color: var(--lime, #d9edb6);
+            animation: start-nudge 2.4s ease-in-out infinite
+        }
+
+        .start-word {
+            margin-top: 26px;
+            font-family: Manrope, sans-serif;
+            font-weight: 800;
+            font-size: 42px;
+            letter-spacing: -2px
+        }
+
+        .start-word .dot {
+            color: #89a65d;
+            margin-left: -3px
+        }
+
+        .start-tag {
+            margin-top: 8px;
+            color: var(--muted, #667366);
+            font-size: 16px
+        }
+
+        .start-actions {
+            position: relative;
+            z-index: 1;
+            animation: start-enter .6s .15s ease both
+        }
+
+        .btn-start {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            width: 100%;
+            height: 58px;
+            border-radius: 18px;
+            background: var(--green, #285c49);
+            color: #fff;
+            font-weight: 700;
+            font-size: 17px;
+            box-shadow: 0 12px 28px -14px rgba(40, 92, 73, .7);
+            transition: transform .15s ease, background .15s ease;
+        }
+
+        .btn-start:hover {
+            background: #21503f
+        }
+
+        .btn-start:active {
+            transform: scale(.98)
+        }
+
+        .btn-start:focus-visible {
+            outline: 3px solid var(--lime, #d9edb6);
+            outline-offset: 3px
+        }
+
+        .btn-start svg {
+            width: 20px;
+            height: 20px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2.2;
+            stroke-linecap: round;
+            stroke-linejoin: round
+        }
+
+        body.start-open {
+            overflow: hidden
+        }
+
+        @keyframes start-enter {
+            from {
+                opacity: 0;
+                transform: translateY(14px)
+            }
+
+            to {
+                opacity: 1;
+                transform: none
+            }
+        }
+
+        @keyframes start-nudge {
+
+            0%,
+            100% {
+                transform: translate(0, 0)
+            }
+
+            50% {
+                transform: translate(3px, -3px)
+            }
+        }
+
+        @media (prefers-reduced-motion:reduce) {
+
+            .start-screen,
+            .start-screen * {
+                animation: none !important;
+                transition: none !important
+            }
+        }
+    </style>
+</head>
+
+<body class="start-open">
+    <div class="preview-caption"><strong>findback.</strong><span>PHONE APP PROTOTYPE</span>
+        <p>A little lost. Almost home.</p>
+    </div>
+    <div class="phone-app">
+        <header class="app-header"><a class="brand" href="#home" aria-label="FindBack home"><span
+                    class="brandmark">f<span>↗</span></span>findback<span class="brand-dot">.</span></a><button
+                class="profile-button" id="about" aria-label="About this demo">?</button></header>
+        <main id="app"></main>
+        <nav class="bottom-nav" aria-label="Main navigation">
+            <a href="#home" data-nav="home"><svg viewBox="0 0 24 24">
+                    <path d="m3 10 9-7 9 7v10H3Z M9 20v-7h6v7" />
+                </svg><span>Home</span></a>
+            <a href="#search" data-nav="search"><svg viewBox="0 0 24 24">
+                    <circle cx="10.5" cy="10.5" r="6.5" />
+                    <path d="m16 16 5 5" />
+                </svg><span>Find item</span></a>
+            <a href="#report" data-nav="report"><svg viewBox="0 0 24 24">
+                    <rect x="3" y="5" width="18" height="16" rx="4" />
+                    <path d="M9 5V3h6v2 M8 13h8 M12 9v8" />
+                </svg><span>Report</span></a>
+            <a href="#claims" data-nav="claims"><svg viewBox="0 0 24 24">
+                    <path d="M7 4h10v3H7Z M7 5H4v16h16V5h-3 M8 13l3 3 5-6" />
+                </svg><span>My claims <b id="claim-count"></b></span></a>
+        </nav>
+    </div>
+
+    <!-- ===== Start screen ===== -->
+    <section class="start-screen" id="start-screen" aria-label="Welcome to FindBack">
+        <div class="blob a"></div>
+        <div class="blob b"></div>
+        <div class="start-hero">
+            <div class="start-mark" aria-hidden="true">f<span>↗</span></div>
+            <h1 class="start-word">findback<span class="dot">.</span></h1>
+            <p class="start-tag">A little lost. Almost home.</p>
+        </div>
+        <div class="start-actions">
+            <button class="btn-start" id="start-btn" type="button">Start<svg viewBox="0 0 24 24">
+                    <path d="M5 12h14M13 6l6 6-6 6" />
+                </svg></button>
+        </div>
+    </section>
+
+    <dialog id="modal"><button class="close" aria-label="Close dialog">×</button>
+        <div id="modal-content"></div>
+    </dialog>
+    <div id="toast" role="status" aria-live="polite"></div>
+
+    <script>
+        (function () {
+            var start = document.getElementById('start-screen');
+            var behind = document.querySelectorAll('.app-header, #app, .bottom-nav');
+            behind.forEach(function (el) {el.inert = true;});
+            document.getElementById('start-btn').addEventListener('click', function () {
+                if (location.hash !== '#home') location.hash = '#home';
+                start.classList.add('is-hidden');
+                document.body.classList.remove('start-open');
+                behind.forEach(function (el) {el.inert = false;});
+                setTimeout(function () {start.remove();}, 400);
+            });
+        })();
+    </script>
+    <script type="module" src="app.js"></script>
+    <script type="module" src="pwa.js"></script>
+</body>
+
+</html>
