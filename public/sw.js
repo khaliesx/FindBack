@@ -1,5 +1,5 @@
-const CACHE='findback-phone-v3';
-const ASSETS=['./','./index.html','./styles.css','./mobile.css','./app.js','./data.js','./ai.js','./pwa.js','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png','./icons/icon-maskable.png','./icons/apple-touch-icon.png'];
+const CACHE='findback-phone-v6';
+const ASSETS=['./','./index.html','./styles.css','./mobile.css','./app.js','./data.js','./ai.js','./pwa.js','./vendor/qrcode.js','./vendor/jsQR.js','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png','./icons/icon-maskable.png','./icons/apple-touch-icon.png'];
 self.addEventListener('install',event=>{
   self.skipWaiting();
   event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(ASSETS.map(a=>new Request(a,{cache:'reload'})))));

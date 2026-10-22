@@ -1,7 +1,18 @@
 import {cosine} from './data.js';
 let lib,extractor,vision,processor;
 const textCache=new Map(),imageCache=new Map();
-async function library(){if(!lib){lib=await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2');lib.env.allowLocalModels=false;lib.env.backends.onnx.wasm.numThreads=1;}return lib}
+async function library(){
+  if(!lib){
+    lib=await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2');
+    // Look in this site's /models/ folder first (self-hosted, same origin, no Hugging Face dependency).
+    // Any model not found there (e.g. CLIP for photo search) still falls back to Hugging Face.
+    lib.env.allowLocalModels=true;
+    lib.env.localModelPath='/models/';
+    lib.env.allowRemoteModels=true;
+    lib.env.backends.onnx.wasm.numThreads=1;
+  }
+  return lib;
+}
 export async function loadText(progress){const t=await library();extractor=await t.pipeline('feature-extraction','Xenova/all-MiniLM-L6-v2',{progress_callback:progress});}
 export function textReady(){return !!extractor}
 async function vector(text){if(!textCache.has(text)){const out=await extractor(text,{pooling:'mean',normalize:true});textCache.set(text,Array.from(out.data));}return textCache.get(text)}

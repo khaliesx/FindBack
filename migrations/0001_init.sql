@@ -1,0 +1,71 @@
+-- FindBack schema (Cloudflare D1 / SQLite)
+
+CREATE TABLE users (
+  id               TEXT PRIMARY KEY,
+  email            TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  name             TEXT NOT NULL,
+  password_hash    TEXT NOT NULL,
+  role             TEXT NOT NULL DEFAULT 'resident'
+                   CHECK (role IN ('resident','security','staff','admin')),
+  collection_point TEXT,               -- required for security and staff; their scope
+  active           INTEGER NOT NULL DEFAULT 1,
+  created_at       TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE sessions (
+  token_hash TEXT PRIMARY KEY,         -- SHA-256 of the cookie token; raw token is never stored
+  user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  expires_at INTEGER NOT NULL,         -- unix ms
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_sessions_user ON sessions(user_id);
+
+CREATE TABLE items (
+  id           TEXT PRIMARY KEY,
+  name         TEXT NOT NULL,
+  category     TEXT NOT NULL,
+  color        TEXT NOT NULL,
+  location     TEXT NOT NULL,
+  date         TEXT NOT NULL,
+  description  TEXT NOT NULL,
+  private_note TEXT NOT NULL,          -- never returned to residents
+  collection   TEXT NOT NULL,          -- collection point holding the item
+  image        TEXT,                   -- compressed JPEG data URL for real reports
+  illus_type   TEXT,                   -- sample items use a generated illustration instead
+  paint        TEXT,
+  accent       TEXT,
+  status       TEXT NOT NULL DEFAULT 'available' CHECK (status IN ('available','collected')),
+  sample       INTEGER NOT NULL DEFAULT 0,
+  reported_by  TEXT REFERENCES users(id),
+  created_at   TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_items_status ON items(status, collection);
+
+CREATE TABLE claims (
+  id            TEXT PRIMARY KEY,
+  item_id       TEXT NOT NULL REFERENCES items(id),
+  user_id       TEXT NOT NULL REFERENCES users(id),
+  claimant_name TEXT NOT NULL,
+  proof         TEXT NOT NULL,
+  last_seen     TEXT NOT NULL,
+  status        TEXT NOT NULL DEFAULT 'pending'
+                CHECK (status IN ('pending','approved','rejected','collected')),
+  pickup_code   TEXT,                  -- issued on approval, shown only to the claimant
+  reviewed_by   TEXT REFERENCES users(id),
+  reviewed_at   TEXT,
+  handed_by     TEXT REFERENCES users(id),
+  handed_at     TEXT,
+  created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX idx_claims_user ON claims(user_id);
+CREATE INDEX idx_claims_item ON claims(item_id);
+
+CREATE TABLE audit_log (
+  id      INTEGER PRIMARY KEY AUTOINCREMENT,
+  at      TEXT NOT NULL DEFAULT (datetime('now')),
+  user_id TEXT,
+  action  TEXT NOT NULL,
+  target  TEXT,
+  detail  TEXT
+);
+CREATE INDEX idx_audit_action ON audit_log(action, target, at);

@@ -1,0 +1,24 @@
+# Must match the existing Worker name so it keeps the same URL:
+# https://findback.<account-subdomain>.workers.dev
+name = "findback"
+main = "src/worker.js"
+compatibility_date = "2025-09-01"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+not_found_handling = "none"   # unknown paths return 404 (keeps /models/ fallback to Hugging Face working)
+
+[[d1_databases]]
+binding = "DB"
+database_name = "findback-db"
+database_id = "REPLACE_WITH_DATABASE_ID"   # printed by: npx wrangler d1 create findback-db
+migrations_dir = "migrations"
+
+[vars]
+# Shows demo-account buttons and the shared demo password on the sign-in screen.
+# Set DEMO_MODE = "false" before sharing the link beyond judges/testers.
+DEMO_MODE = "true"
+DEMO_PASSWORD = "FindBack-Demo-2026"
+# Set to "false" to stop residents creating their own accounts.
+ALLOW_REGISTRATION = "true"

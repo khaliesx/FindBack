@@ -1,0 +1,19 @@
+{
+  "name": "findback",
+  "version": "1.0.0",
+  "description": "FindBack lost-and-found app: Cloudflare Worker + D1",
+  "scripts": {
+    "seed:build": "node scripts/build-seed.mjs",
+    "db:migrate:local": "wrangler d1 migrations apply findback-db --local",
+    "db:migrate:remote": "wrangler d1 migrations apply findback-db --remote",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "jsqr": "^1.4.0",
+    "qrcode-generator": "^1.4.4",
+    "wrangler": "^4.151.3"
+  },
+  "type": "module",
+  "private": true
+}

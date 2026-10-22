@@ -10,6 +10,8 @@ export function illustration(type, color='#303c3c', accent='#d8684b') {
  }[type]||`<rect x="85" y="80" width="130" height="130" rx="20" fill="${color}"/><path d="M85 110h130M150 80v130" stroke="#ffffff55" stroke-width="4"/>`;
  return 'data:image/svg+xml;charset=utf-8,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="300" height="280" viewBox="0 0 300 280"><ellipse cx="150" cy="245" rx="75" ry="9" fill="#213b2b12"/>${body}</svg>`);
 }
+// Sample records. These are loaded into the database by migrations/0002_seed.sql;
+// the app reads live items from /api/items. seedItems[0] is still used for the home hero image.
 export const seedItems=[
  {id:'FB-001',name:'Black bottle, red sticker',category:'Bottles',color:'Black',type:'bottle',paint:'#303b39',accent:'#d4674a',location:'Central Park',date:'2026-10-18',description:'Black reusable water bottle with a red sticker and carry loop. Found beside the playground bench.',privateNote:'Small dent on the base. Initials AK underneath.',collection:'Central Park security desk'},
  {id:'FB-002',name:'Keys with a green fob',category:'Keys',color:'Green',type:'keys',paint:'#42604b',location:'Clubhouse',date:'2026-10-18',description:'House keys on a silver ring with a dark green key fob. Found near the gym entrance.',privateNote:'Three keys. Tiny star engraving on the reverse of the fob.',collection:'Clubhouse reception'},
@@ -26,6 +28,7 @@ export const seedItems=[
 ].map(x=>({...x,status:'available',sample:true,image:illustration(x.type,x.paint,x.accent)}));
 export const locations=['Central Park','Clubhouse','Retail Square','Community Garden'];
 export const categories=['All items','Bottles','Keys','Bags & wallets','Electronics','Other'];
+export const collectionPoints=['Township management office','Central Park security desk','Clubhouse reception'];
 const synonyms={earphones:'earbuds',headphones:'earbuds',flask:'bottle',tumbler:'bottle',bottles:'bottle',handbag:'bag',backpack:'bag',tote:'bag',navy:'blue',grey:'gray',keys:'key'};
 export const normalize=s=>String(s||'').toLowerCase().replace(/[a-z0-9]+/g,t=>synonyms[t]||t);
 const stop=new Set('i my a an the at in on by with and of is it was lost find me near please have has this that something to for keep without'.split(' '));
