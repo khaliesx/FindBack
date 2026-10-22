@@ -332,6 +332,82 @@ route('POST', '/api/claims/:id/handover', async ({ req, env, user, params }) => 
   return json({ ok: true, claimantName: c.claimant_name, itemName: c.item_name });
 });
 
+// Smart search (Cloudflare Workers AI) -------------------------------
+// Photo → a vision model describes the item → an embedding model compares that
+// description (plus any typed words) with every available item's text.
+const VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
+const EMBED_MODEL = '@cf/baai/bge-m3';
+const PHOTO_SEARCHES_PER_HOUR = 30;
+
+async function describePhoto(env, image) {
+  const input = {
+    messages: [
+      { role: 'system', content: 'You describe photos of lost items for a lost-and-found search. Reply with one short sentence only.' },
+      { role: 'user', content: 'Describe the main object: what it is, its main colour, and any distinctive marks, stickers or text. No preamble.' },
+    ],
+    image,
+    max_tokens: 60,
+  };
+  try {
+    return await env.AI.run(VISION_MODEL, input);
+  } catch (e) {
+    // Meta's licence must be accepted once per Cloudflare account before first use.
+    if (!/agree|licen[cs]e/i.test(String(e?.message || e))) throw e;
+    await env.AI.run(VISION_MODEL, { prompt: 'agree' });
+    return env.AI.run(VISION_MODEL, input);
+  }
+}
+async function embed(env, texts) {
+  const out = await env.AI.run(EMBED_MODEL, { text: texts });
+  const vectors = out?.data || out?.response;
+  if (!Array.isArray(vectors) || vectors.length !== texts.length) throw new Error('Unexpected embedding output');
+  return vectors;
+}
+function cosine(a, b) {
+  let n = 0, aa = 0, bb = 0;
+  for (let i = 0; i < a.length; i++) { n += a[i] * b[i]; aa += a[i] * a[i]; bb += b[i] * b[i]; }
+  return n / (Math.sqrt(aa * bb) || 1);
+}
+
+route('POST', '/api/search', async ({ req, env, user }) => {
+  if (!env.AI) fail(503, 'Smart search is not set up on this server.');
+  const b = await readBody(req);
+  const query = typeof b.query === 'string' ? b.query.trim().slice(0, 300) : '';
+  const image = typeof b.image === 'string' && b.image ? b.image : null;
+  if (image && (!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(image) || image.length > MAX_IMAGE)) fail(400, 'Please use a photo under 1 MB.');
+  if (!query && !image) fail(400, 'Describe the item or add a photo.');
+
+  let caption = null;
+  if (image) {
+    const used = await env.DB.prepare(
+      `SELECT COUNT(*) AS n FROM audit_log WHERE action = 'search.photo' AND user_id = ? AND at > datetime('now', '-1 hour')`
+    ).bind(user.id).first();
+    if (used.n >= PHOTO_SEARCHES_PER_HOUR) fail(429, 'Photo search limit reached for this hour. Describe the item in words instead.');
+    await audit(env, user.id, 'search.photo');
+    try {
+      const r = await describePhoto(env, image);
+      caption = String(r?.response || r?.description || '').replace(/\s+/g, ' ').trim().slice(0, 300) || null;
+    } catch (e) {
+      console.error('vision failed', e);
+      fail(502, 'The AI could not read this photo right now.');
+    }
+  }
+
+  const { results: items } = await env.DB.prepare(
+    `SELECT id, name, category, color, description FROM items WHERE status = 'available'`
+  ).all();
+  const text = [query, caption].filter(Boolean).join('. ');
+  if (!items.length || !text) return json({ caption, scores: [] });
+  let vectors;
+  try {
+    vectors = await embed(env, [text, ...items.map(i => `${i.name}. ${i.category}. ${i.color}. ${i.description}`)]);
+  } catch (e) {
+    console.error('embedding failed', e);
+    fail(502, 'Smart matching is unavailable right now.');
+  }
+  return json({ caption, scores: items.map((i, k) => ({ id: i.id, score: cosine(vectors[0], vectors[k + 1]) })) });
+});
+
 // Administration -----------------------------------------------------
 const requireAdmin = user => { if (user.role !== 'admin') fail(403, 'Township admins only.'); };
 

@@ -15,6 +15,9 @@ database_name = "findback-db"
 database_id = "f62f9bbb-d260-4a55-a96d-5581d199f116"   # printed by: npx wrangler d1 create findback-db
 migrations_dir = "migrations"
 
+[ai]
+binding = "AI"
+
 [vars]
 # Shows demo-account buttons and the shared demo password on the sign-in screen.
 # Set DEMO_MODE = "false" before sharing the link beyond judges/testers.

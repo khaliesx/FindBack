@@ -41,10 +41,12 @@ export function lexical(item,query){
 // Keep full ranking until display filters have been applied.
 export function rankText(items,query,semanticScores=[]){
  const scores=new Map(semanticScores.map(r=>[r.id,r.score]));
+ // Similarity scales differ between models, so "close enough" is measured against the best match.
+ const best=semanticScores.length?Math.max(...semanticScores.map(r=>r.score)):0;
  return items.filter(i=>i.status==='available').map(item=>{
   const l=lexical(item,query),s=scores.get(item.id)||0;
   return {id:item.id,score:semanticScores.length?.55*l.score+.45*s:l.score,
-   reason:l.reasons.length?'Shared details: '+l.reasons.join(' · '):'Similar description · check details',eligible:l.score>0||s>.32};
+   reason:l.reasons.length?'Shared details: '+l.reasons.join(' · '):'Similar description · check details',eligible:l.score>0||(semanticScores.length>0&&s>=best-.08&&s>.3)};
  }).filter(r=>r.eligible).sort((a,b)=>b.score-a.score||a.id.localeCompare(b.id));
 }
 export function filterResults(results,items,category='All items',location='',limit=8){

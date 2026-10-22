@@ -1,4 +1,4 @@
-const CACHE='findback-phone-v6';
+const CACHE='findback-phone-v7';
 const ASSETS=['./','./index.html','./styles.css','./mobile.css','./app.js','./data.js','./ai.js','./pwa.js','./vendor/qrcode.js','./vendor/jsQR.js','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png','./icons/icon-maskable.png','./icons/apple-touch-icon.png'];
 self.addEventListener('install',event=>{
   self.skipWaiting();
