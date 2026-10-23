@@ -19,9 +19,7 @@ migrations_dir = "migrations"
 binding = "AI"
 
 [vars]
-# Shows demo-account buttons and the shared demo password on the sign-in screen.
-# Set DEMO_MODE = "false" before sharing the link beyond judges/testers.
+# Labels this deployment as a prototype; no sign-in password is sent to browsers.
 DEMO_MODE = "true"
-DEMO_PASSWORD = "FindBack-Demo-2026"
 # Set to "false" to stop residents creating their own accounts.
 ALLOW_REGISTRATION = "true"

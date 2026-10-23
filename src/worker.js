@@ -1,10 +1,10 @@
 // FindBack API — Cloudflare Worker + D1
 // Static files in /public are served by Workers Assets; every /api/* request reaches this code.
 
-const COLLECTION_POINTS = ['Township management office', 'Central Park security desk', 'Clubhouse reception'];
-const LOCATIONS = ['Central Park', 'Clubhouse', 'Retail Square', 'Community Garden'];
-const CATEGORIES = ['Bottles', 'Keys', 'Bags & wallets', 'Electronics', 'Other'];
-const COLORS = ['Black', 'White', 'Blue', 'Green', 'Red', 'Brown', 'Cream', 'Other'];
+const COLLECTION_POINTS = ['Elmina Lakeside Mall Centre Management Office', 'Elmina Rainforest Knowledge Centre (ERKC)', 'Elmina Green 7 Management Office'];
+const LOCATIONS = ['Elmina Central Park', 'Elmina Green Seven', 'Elmina Lakeside Mall', 'Elmina Urban Park'];
+const CATEGORIES = ['Bottles', 'Keys', 'Bags & wallets', 'Electronics', 'Sports', 'Other'];
+const COLORS = ['Black', 'White', 'Blue', 'Green', 'Red', 'Orange', 'Brown', 'Cream', 'Other'];
 const ROLES = ['resident', 'security', 'staff', 'admin'];
 
 // ---------- Access-control rules (single source of truth) ----------
@@ -13,9 +13,9 @@ const ROLES = ['resident', 'security', 'staff', 'admin'];
 // user's assigned collection point, except for admins.
 const PERMISSIONS = {
   resident: ['items:read', 'items:report', 'claims:create', 'claims:own'],
-  security: ['items:read', 'items:report', 'claims:create', 'claims:own', 'claims:desk', 'claims:handover'],
-  staff:    ['items:read', 'items:report', 'claims:create', 'claims:own', 'claims:desk', 'claims:review', 'claims:handover', 'items:private'],
-  admin:    ['*'],
+  security: ['items:read', 'items:report', 'claims:desk'],
+  staff:    ['items:read', 'items:report', 'claims:desk', 'claims:review', 'claims:handover', 'items:private'],
+  admin:    ['items:read', 'claims:desk', 'claims:review', 'claims:handover', 'items:private'],
 };
 const can = (user, perm) => {
   const p = PERMISSIONS[user?.role] || [];
@@ -119,7 +119,7 @@ const itemOut = (r, withPrivate = false) => ({
   id: r.id, name: r.name, category: r.category, color: r.color, location: r.location, date: r.date,
   description: r.description, collection: r.collection, image: r.image || null,
   type: r.illus_type || null, paint: r.paint || null, accent: r.accent || null,
-  status: r.status, sample: !!r.sample, reportedByMe: false,
+  status: r.intake_status === 'reported' ? 'reported' : r.reserved_claim_id ? 'reserved' : r.status, sample: !!r.sample, reportedByMe: false,
   ...(withPrivate ? { privateNote: r.private_note } : {}),
 });
 
@@ -129,19 +129,10 @@ const route = (method, pattern, handler, { auth = true } = {}) =>
   routes.push({ method, re: new RegExp('^' + pattern.replace(/:(\w+)/g, '(?<$1>[^/]+)') + '$'), handler, auth });
 
 route('GET', '/api/config', async ({ env }) => {
-  const demo = env.DEMO_MODE === 'true';
   return json({
-    demoMode: demo,
+    demoMode: env.DEMO_MODE === 'true',
     allowRegistration: env.ALLOW_REGISTRATION !== 'false',
     collectionPoints: COLLECTION_POINTS,
-    demoAccounts: demo ? [
-      { email: 'resident@findback.demo', label: 'Resident' },
-      { email: 'security@findback.demo', label: 'Security · Central Park' },
-      { email: 'staff.centralpark@findback.demo', label: 'Staff · Central Park' },
-      { email: 'staff.clubhouse@findback.demo', label: 'Staff · Clubhouse' },
-      { email: 'admin@findback.demo', label: 'Township admin' },
-    ] : [],
-    demoPassword: demo ? (env.DEMO_PASSWORD || null) : null,
   });
 }, { auth: false });
 
@@ -165,18 +156,18 @@ route('POST', '/api/auth/register', async ({ req, env }) => {
 
 route('POST', '/api/auth/login', async ({ req, env }) => {
   const b = await readBody(req);
-  const email = typeof b.email === 'string' ? b.email.trim().toLowerCase().slice(0, 120) : '';
+  const identifier = typeof (b.username || b.email) === 'string' ? (b.username || b.email).trim().toLowerCase().slice(0, 120) : '';
   const password = typeof b.password === 'string' ? b.password.slice(0, 128) : '';
-  if (!email || !password) fail(400, 'Please enter your email and password.');
+  if (!identifier || !password) fail(400, 'Please enter your email or staff username and password.');
   const recent = await env.DB.prepare(
     `SELECT COUNT(*) AS n FROM audit_log WHERE action = 'auth.login_failed' AND target = ? AND at > datetime('now', ?)`
-  ).bind(email, `-${LOGIN_WINDOW_MIN} minutes`).first();
+  ).bind(identifier, `-${LOGIN_WINDOW_MIN} minutes`).first();
   if (recent.n >= LOGIN_MAX_FAILS) fail(429, `Too many attempts. Try again in ${LOGIN_WINDOW_MIN} minutes.`);
-  const user = await env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(email).first();
+  const user = await env.DB.prepare('SELECT * FROM users WHERE email = ? OR username = ?').bind(identifier, identifier).first();
   const ok = await verifyPassword(password, user ? user.password_hash : DUMMY_HASH);
   if (!user || !ok || !user.active) {
-    await audit(env, user?.id || null, 'auth.login_failed', email);
-    fail(401, user && ok && !user.active ? 'This account has been deactivated.' : 'Email or password is incorrect.');
+    await audit(env, user?.id || null, 'auth.login_failed', identifier);
+    fail(401, user && ok && !user.active ? 'This account has been deactivated.' : 'Sign-in details are incorrect.');
   }
   await audit(env, user.id, 'auth.login', user.id);
   return json({ user: publicUser(user) }, 200, { 'Set-Cookie': await createSession(env, user.id) });
@@ -193,8 +184,12 @@ route('GET', '/api/auth/me', async ({ user }) => json({ user: publicUser(user) }
 // Items -------------------------------------------------------------
 route('GET', '/api/items', async ({ env, user }) => {
   const { results } = await env.DB.prepare(
-    `SELECT * FROM items WHERE status = 'available' ORDER BY date DESC, created_at DESC`
-  ).all();
+    `SELECT * FROM items WHERE status = 'available' AND
+     (intake_status = 'received' OR reported_by = ? OR
+      (? IN ('security','staff') AND collection = ?) OR ? = 'admin') AND
+     (reserved_claim_id IS NULL OR (? IN ('security','staff') AND collection = ?) OR ? = 'admin')
+     ORDER BY date DESC, created_at DESC`
+  ).bind(user.id, user.role, user.collection_point || '', user.role, user.role, user.collection_point || '', user.role).all();
   return json({
     items: results.map(r => ({
       ...itemOut(r, can(user, 'items:private') && inScope(user, r.collection)),
@@ -224,16 +219,31 @@ route('POST', '/api/items', async ({ req, env, user }) => {
     privateNote: str(b.privateNote, 3, 500, 'Staff-only detail'),
   };
   await env.DB.prepare(
-    `INSERT INTO items (id, name, category, color, location, date, description, private_note, collection, image, reported_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    `INSERT INTO items (id, name, category, color, location, date, description, private_note, collection, image, reported_by, intake_status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'reported')`
   ).bind(item.id, item.name, item.category, item.color, item.location, date, item.description, item.privateNote, collection, image, user.id).run();
   await audit(env, user.id, 'item.report', item.id, collection);
-  return json({ item: { id: item.id, collection } }, 201);
+  return json({ item: { id: item.id, collection, status: 'reported' } }, 201);
+});
+
+route('POST', '/api/items/:id/intake', async ({ env, user, params }) => {
+  if (!can(user, 'claims:desk')) fail(403, 'Your role cannot receive items.');
+  const item = await env.DB.prepare('SELECT id, status, intake_status, collection FROM items WHERE id = ?').bind(params.id).first();
+  if (!item) fail(404, 'Item not found.');
+  if (!inScope(user, item.collection)) fail(403, 'This report belongs to another collection point.');
+  if (item.status !== 'available' || item.intake_status !== 'reported') fail(409, 'This item has already been received or closed.');
+  const result = await env.DB.prepare(
+    `UPDATE items SET intake_status = 'received', received_by = ?, received_at = datetime('now')
+     WHERE id = ? AND status = 'available' AND intake_status = 'reported'`
+  ).bind(user.id, item.id).run();
+  if (!result.meta.changes) fail(409, 'This item has already been received.');
+  await audit(env, user.id, 'item.receive', item.id, item.collection);
+  return json({ ok: true });
 });
 
 // Claims ------------------------------------------------------------
 const CLAIM_SELECT = `SELECT c.*, i.name AS item_name, i.collection, i.image, i.illus_type, i.paint, i.accent,
-  i.private_note, i.status AS item_status FROM claims c JOIN items i ON i.id = c.item_id`;
+  i.private_note, i.status AS item_status, i.reserved_claim_id FROM claims c JOIN items i ON i.id = c.item_id`;
 
 function claimOut(r, user, view) {
   const base = {
@@ -246,13 +256,14 @@ function claimOut(r, user, view) {
   const reviewer = can(user, 'claims:review') && inScope(user, r.collection);
   return {
     ...base, claimantName: r.claimant_name, isMine: r.user_id === user.id,
-    ...(reviewer ? { proof: r.proof, lastSeen: r.last_seen, privateNote: r.private_note } : {}),
+    ...(reviewer ? { proof: r.proof, lastSeen: r.last_seen, privateNote: r.private_note, decisionReason: r.decision_reason, reservedForAnother: !!r.reserved_claim_id && r.reserved_claim_id !== r.id } : {}),
   };
 }
 
 route('GET', '/api/claims', async ({ env, user, url }) => {
   const scope = url.searchParams.get('scope') || 'mine';
   if (scope === 'mine') {
+    if (!can(user, 'claims:own')) fail(403, 'Only residents can track their own claims.');
     const { results } = await env.DB.prepare(CLAIM_SELECT + ' WHERE c.user_id = ? ORDER BY c.created_at DESC').bind(user.id).all();
     return json({ claims: results.map(r => claimOut(r, user, 'mine')) });
   }
@@ -273,8 +284,8 @@ route('POST', '/api/claims', async ({ req, env, user }) => {
   const itemId = str(b.itemId, 3, 20, 'Item');
   const proof = str(b.proof, 8, 600, 'Identifying detail');
   const lastSeen = str(b.lastSeen, 3, 200, 'Last seen');
-  const item = await env.DB.prepare('SELECT id, status, reported_by FROM items WHERE id = ?').bind(itemId).first();
-  if (!item || item.status !== 'available') fail(409, 'This item is no longer available.');
+  const item = await env.DB.prepare('SELECT id, status, intake_status, reported_by, reserved_claim_id FROM items WHERE id = ?').bind(itemId).first();
+  if (!item || item.status !== 'available' || item.intake_status !== 'received' || item.reserved_claim_id) fail(409, 'This item is not available for claims.');
   if (item.reported_by === user.id) fail(409, 'You reported this item, so you cannot claim it.');
   const dup = await env.DB.prepare(`SELECT 1 FROM claims WHERE item_id = ? AND user_id = ? AND status != 'rejected'`).bind(itemId, user.id).first();
   if (dup) fail(409, 'You already have a claim for this item. Check My claims.');
@@ -297,18 +308,44 @@ route('POST', '/api/claims/:id/decision', async ({ req, env, user, params }) => 
   if (!inScope(user, c.collection)) fail(403, 'This claim belongs to another collection point.');
   if (c.user_id === user.id) fail(403, 'You cannot review your own claim.');
   if (c.status !== 'pending') fail(409, 'This claim has already been reviewed.');
-  const { decision } = await readBody(req);
+  const { decision, reason: rawReason, verified } = await readBody(req);
   oneOf(decision, ['approved', 'rejected'], 'decision');
+  const reason = str(rawReason, 8, 300, 'Review reason');
   if (decision === 'approved') {
-    const other = await env.DB.prepare(`SELECT 1 FROM claims WHERE item_id = ? AND id != ? AND status IN ('approved','collected')`).bind(c.item_id, c.id).first();
-    if (other) fail(409, 'This item already has an approved claim.');
+    if (verified !== true) fail(400, 'Compare the claimant evidence with the physical item before approval.');
+    const reservation = await env.DB.prepare(`UPDATE items SET reserved_claim_id = ?, reserved_at = datetime('now') WHERE id = ? AND status = 'available' AND intake_status = 'received' AND reserved_claim_id IS NULL`).bind(c.id, c.item_id).run();
+    if (!reservation.meta.changes) fail(409, 'This item is already reserved or unavailable.');
   }
   const code = decision === 'approved' ? pickupCode() : null;
-  const res = await env.DB.prepare(
-    `UPDATE claims SET status = ?, pickup_code = ?, reviewed_by = ?, reviewed_at = datetime('now') WHERE id = ? AND status = 'pending'`
-  ).bind(decision, code, user.id, c.id).run();
-  if (!res.meta.changes) fail(409, 'This claim has already been reviewed.');
+  let res;
+  try {
+    res = await env.DB.prepare(
+      `UPDATE claims SET status = ?, pickup_code = ?, decision_reason = ?, reviewed_by = ?, reviewed_at = datetime('now') WHERE id = ? AND status = 'pending'`
+    ).bind(decision, code, reason, user.id, c.id).run();
+  } catch (e) {
+    if (decision === 'approved') await env.DB.prepare(`UPDATE items SET reserved_claim_id = NULL, reserved_at = NULL WHERE id = ? AND reserved_claim_id = ?`).bind(c.item_id, c.id).run();
+    throw e;
+  }
+  if (!res.meta.changes) {
+    if (decision === 'approved') await env.DB.prepare(`UPDATE items SET reserved_claim_id = NULL, reserved_at = NULL WHERE id = ? AND reserved_claim_id = ?`).bind(c.item_id, c.id).run();
+    fail(409, 'This claim has already been reviewed.');
+  }
   await audit(env, user.id, 'claim.' + (decision === 'approved' ? 'approve' : 'reject'), c.id, c.item_id);
+  return json({ ok: true });
+});
+
+route('POST', '/api/claims/:id/release', async ({ req, env, user, params }) => {
+  if (!can(user, 'claims:review')) fail(403, 'Your role cannot release reservations.');
+  const c = await loadClaimForDesk(env, params.id);
+  if (!inScope(user, c.collection)) fail(403, 'This claim belongs to another collection point.');
+  if (c.user_id === user.id) fail(403, 'You cannot release your own claim.');
+  if (c.status !== 'approved' || c.reserved_claim_id !== c.id) fail(409, 'This claim has no active reservation.');
+  const { reason: rawReason } = await readBody(req);
+  const reason = str(rawReason, 8, 300, 'Release reason');
+  const released = await env.DB.prepare(`UPDATE items SET reserved_claim_id = NULL, reserved_at = NULL WHERE id = ? AND status = 'available' AND reserved_claim_id = ?`).bind(c.item_id, c.id).run();
+  if (!released.meta.changes) fail(409, 'This reservation is no longer active.');
+  await env.DB.prepare(`UPDATE claims SET status = 'rejected', pickup_code = NULL, decision_reason = ?, reviewed_by = ?, reviewed_at = datetime('now') WHERE id = ? AND status = 'approved'`).bind(reason, user.id, c.id).run();
+  await audit(env, user.id, 'claim.release', c.id, reason);
   return json({ ok: true });
 });
 
@@ -318,14 +355,16 @@ route('POST', '/api/claims/:id/handover', async ({ req, env, user, params }) => 
   if (!inScope(user, c.collection)) fail(403, 'This item is held at another collection point.');
   if (c.status !== 'approved') fail(409, 'Only approved claims can be handed over.');
   if (c.user_id === user.id) fail(403, 'Another team member must hand over your own claim.');
-  const { code } = await readBody(req);
+  if (c.reserved_claim_id !== c.id) fail(409, 'This claim does not hold the item reservation.');
+  const { code, confirmedOwnerDetail } = await readBody(req);
+  if (confirmedOwnerDetail !== true) fail(400, 'Confirm the claimant identity and ownership detail at the desk.');
   if (typeof code !== 'string' || !safeEqual(code.trim(), c.pickup_code || '')) {
     await audit(env, user.id, 'claim.handover_failed', c.id, 'wrong pickup code');
     fail(400, 'Pickup code does not match. Ask the owner to check My claims.');
   }
   await env.DB.batch([
-    env.DB.prepare(`UPDATE claims SET status = 'collected', handed_by = ?, handed_at = datetime('now') WHERE id = ?`).bind(user.id, c.id),
-    env.DB.prepare(`UPDATE items SET status = 'collected' WHERE id = ?`).bind(c.item_id),
+    env.DB.prepare(`UPDATE claims SET status = 'collected', handover_verified = 1, handed_by = ?, handed_at = datetime('now') WHERE id = ? AND status = 'approved'`).bind(user.id, c.id),
+    env.DB.prepare(`UPDATE items SET status = 'collected' WHERE id = ? AND reserved_claim_id = ?`).bind(c.item_id, c.id),
     env.DB.prepare(`UPDATE claims SET status = 'rejected', reviewed_at = datetime('now') WHERE item_id = ? AND id != ? AND status IN ('pending','approved')`).bind(c.item_id, c.id),
   ]);
   await audit(env, user.id, 'claim.handover', c.id, c.item_id);
@@ -370,6 +409,7 @@ function cosine(a, b) {
 }
 
 route('POST', '/api/search', async ({ req, env, user }) => {
+  if (!can(user, 'claims:create')) fail(403, 'Smart item search is for residents.');
   if (!env.AI) fail(503, 'Smart search is not set up on this server.');
   const b = await readBody(req);
   const query = typeof b.query === 'string' ? b.query.trim().slice(0, 300) : '';
@@ -394,7 +434,7 @@ route('POST', '/api/search', async ({ req, env, user }) => {
   }
 
   const { results: items } = await env.DB.prepare(
-    `SELECT id, name, category, color, description FROM items WHERE status = 'available'`
+    `SELECT id, name, category, color, description FROM items WHERE status = 'available' AND intake_status = 'received' AND reserved_claim_id IS NULL`
   ).all();
   const text = [query, caption].filter(Boolean).join('. ');
   if (!items.length || !text) return json({ caption, scores: [] });

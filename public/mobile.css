@@ -56,3 +56,30 @@
 .scanner video{width:100%;height:100%;object-fit:cover;display:block}
 .scan-frame{position:absolute;inset:16%;border:3px solid var(--lime);border-radius:18px;box-shadow:0 0 0 999px #0007}
 .pickup-where{font-size:12px;color:#41683d}
+
+/* City of Elmina map */
+.township-map-section{margin:18px 0 28px;padding:18px;background:#fff;border:1px solid var(--line);border-radius:18px}
+.township-map-section .section-head{margin-bottom:6px}
+.map-intro,.map-caveat{color:var(--muted);font-size:11px;line-height:1.5;margin:7px 0 12px}
+.township-map{height:260px;border-radius:13px;overflow:hidden;background:#e9eee7;display:grid;place-items:center;color:var(--muted);font-size:12px}
+.township-map .leaflet-container{font-family:inherit}
+.township-map .leaflet-popup-content{font-size:11px;line-height:1.5}
+.township-map .leaflet-control-attribution{font-size:9px}
+.map-legend{display:flex;gap:15px;margin-top:12px;color:var(--muted);font-size:10px}
+.map-legend span{display:flex;align-items:center;gap:5px}
+.map-dot{width:10px;height:10px;border-radius:50%;display:inline-block;background:#6d9856}
+.map-dot.desk{background:#285c49}
+.map-desk-pin{display:grid;place-items:center;border:2px solid #fff;border-radius:50%;background:#285c49;color:#fff;font-size:22px;box-shadow:0 2px 8px #17372866}
+.map-list{border-top:1px solid var(--line);padding-top:12px;margin-top:14px}
+.map-list>strong{display:block;font-size:11px;margin-bottom:5px}
+.map-row{width:100%;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid #eef1e9;text-align:left;color:var(--ink);font-size:11px}
+.map-row span:first-child{min-width:0}.map-row small{display:block;color:var(--muted);font-size:10px;margin-top:3px;line-height:1.3}
+.map-row>span:last-child,.map-row a{white-space:nowrap;color:#285c49;font-weight:700;font-size:10px}
+.pickup-directions{display:inline-block;margin:8px 0;color:#285c49;font-size:12px;font-weight:700}
+.intake-section{background:#fff;border:1px solid var(--line);border-radius:18px;padding:18px;margin:0 0 18px}
+.intake-section .section-head{margin-bottom:8px}
+.intake-section .muted-note{font-size:11px;color:var(--muted)}
+.intake-card{display:flex;gap:12px;align-items:flex-start;padding:13px 0;border-top:1px solid #eef1e9}
+.intake-card img{width:66px;height:66px;object-fit:contain;background:#eef2e8;border-radius:9px}
+.intake-card>div{flex:1;min-width:0}.intake-card strong{display:block;font-size:12px}.intake-card small{display:block;color:var(--muted);font-size:10px;margin:5px 0}
+.intake-card .button{margin-top:7px}

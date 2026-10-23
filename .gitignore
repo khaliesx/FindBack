@@ -1,2 +1,5 @@
 node_modules/
 .wrangler/
+.wrangler-config/
+.pnpm-store/
+backups/
